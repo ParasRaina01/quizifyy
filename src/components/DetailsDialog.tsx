@@ -95,12 +95,12 @@ const DetailsDialog = (props: Props) => {
                 </div>
                 <div className="flex items-center gap-2">
                   <Image
-                    alt="openai"
-                    src="/openai.png"
+                    alt="gemini"
+                    src="/gemini.png"
                     width={30}
                     height={30}
                   />
-                  <span className="">OpenAI</span>
+                  <span className="">Google Gemini</span>
                 </div>
 
                 <div className="flex items-center gap-2">
