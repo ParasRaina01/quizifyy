@@ -58,16 +58,19 @@ enum GameType {
 }
 
 model Game {
-  id          String     @id @default(cuid())
-  userId      String
-  questions   Question[]
-  timeStarted DateTime
-  topic       String
-  timeEnded   DateTime?
-  gameType    GameType
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String       @id @default(cuid())
+  userId        String?      // Make userId optional for guest sessions
+  questions     Question[]
+  timeStarted   DateTime
+  topic         String
+  timeEnded     DateTime?
+  gameType      GameType
+  user          User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestSession  GuestSession? @relation(fields: [guestSessionId], references: [id])
+  guestSessionId String?
 
   @@index([userId])
+  @@index([guestSessionId])
 }
 
 model topic_count {
@@ -81,7 +84,7 @@ model Question {
   question          String
   answer            String
   gameId            String
-  options           Json?    // for mcq questions
+  options           Json?    // This will store stringified JSON for MCQ options
   percentageCorrect Float?   // for open_ended questions
   isCorrect         Boolean? // for mcq questions
   questionType      GameType
@@ -89,4 +92,11 @@ model Question {
   game              Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId])
+}
+
+model GuestSession {
+  id          String      @id @default(cuid())
+  createdAt   DateTime    @default(now())
+  expiresAt   DateTime
+  games       Game[]      // One guest session can have multiple games
 }

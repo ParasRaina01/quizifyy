@@ -20,130 +20,167 @@ import axios from "axios";
 import { z } from "zod";
 import { useToast } from "./ui/use-toast";
 import { Progress } from "./ui/progress";
+import RegistrationPrompt from "./RegistrationPrompt";
+import { useRouter } from "next/navigation";
+import { Separator } from "@/components/ui/separator";
 
 type Props = {
-  game: Game & { questions: Pick<Question, "id" | "options" | "question">[] };
+  game: Game & {
+    questions: Question[];
+  };
+  isGuest?: boolean;
 };
 
-const MCQ = ({ game }: Props) => {
+interface MCQQuestion {
+  options: string[];
+  answer: string;
+}
+
+const MCQ = ({ game, isGuest }: Props) => {
   const [questionIndex, setQuestionIndex] = React.useState(0);
-  const [hasEnded, setHasEnded] = React.useState(false);
-  const [stats, setStats] = React.useState({
-    correct_answers: 0,
-    wrong_answers: 0,
-  });
   const [selectedChoice, setSelectedChoice] = React.useState<number>(0);
+  const [correctAnswers, setCorrectAnswers] = React.useState(0);
+  const [wrongAnswers, setWrongAnswers] = React.useState(0);
+  const [hasEnded, setHasEnded] = React.useState(false);
   const [now, setNow] = React.useState(new Date());
+  const [showRegistrationPrompt, setShowRegistrationPrompt] = React.useState(false);
+  const [endTime, setEndTime] = React.useState<Date | null>(null);
+
+  const { toast } = useToast();
+  const router = useRouter();
 
   const currentQuestion = React.useMemo(() => {
     return game.questions[questionIndex];
   }, [questionIndex, game.questions]);
 
-  const options = React.useMemo(() => {
-    if (!currentQuestion?.options) return [];
+  // Parse options from the JSON string
+  const questionData = React.useMemo(() => {
+    if (!currentQuestion?.options) return { options: [], answer: '' };
     try {
-      const parsedOptions = JSON.parse(currentQuestion.options as string);
-      return Array.isArray(parsedOptions) ? parsedOptions : [];
-    } catch (error) {
-      console.error("Error parsing options:", error);
-      return [];
+      return JSON.parse(currentQuestion.options as string) as MCQQuestion;
+    } catch (e) {
+      console.error('Error parsing question options:', e);
+      return { options: [], answer: '' };
     }
   }, [currentQuestion]);
 
-  const { toast } = useToast();
   const { mutate: checkAnswer, isLoading: isChecking } = useMutation({
     mutationFn: async () => {
       const payload: z.infer<typeof checkAnswerSchema> = {
         questionId: currentQuestion.id,
-        userInput: options[selectedChoice],
+        userInput: questionData.options[selectedChoice],
       };
       const response = await axios.post(`/api/checkAnswer`, payload);
       return response.data;
     },
   });
 
-  const { mutate: endGame } = useMutation({
-    mutationFn: async () => {
-      const payload = {
-        gameId: game.id,
-      };
-      const response = await axios.post(`/api/endGame`, payload);
-      return response.data;
-    },
-  });
-
   React.useEffect(() => {
+    if (hasEnded && !endTime) {
+      setEndTime(new Date());
+      return;
+    }
+
     const interval = setInterval(() => {
       if (!hasEnded) {
         setNow(new Date());
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [hasEnded]);
+  }, [hasEnded, endTime]);
 
-  const handleNext = React.useCallback(() => {
-    if (!currentQuestion) return;
+  const handleNext = async () => {
+    if (isChecking) return;
+
     checkAnswer(undefined, {
-      onSuccess: ({ isCorrect }) => {
-        if (isCorrect) {
-          setStats((stats) => ({
-            ...stats,
-            correct_answers: stats.correct_answers + 1,
-          }));
+      onSuccess: (data) => {
+        if (data.isCorrect) {
+          setCorrectAnswers((prev) => prev + 1);
           toast({
             title: "Correct!",
-            description: "Good job! Keep going!",
+            description: "Good job! On to the next question.",
             variant: "success",
           });
         } else {
-          setStats((stats) => ({
-            ...stats,
-            wrong_answers: stats.wrong_answers + 1,
-          }));
+          setWrongAnswers((prev) => prev + 1);
           toast({
-            title: "Incorrect",
-            description: "Don't worry, keep trying!",
+            title: "Wrong!",
+            description: `The correct answer was ${data.correctAnswer}`,
             variant: "destructive",
           });
         }
+
         if (questionIndex === game.questions.length - 1) {
-          endGame();
           setHasEnded(true);
+          setEndTime(new Date());
+          if (isGuest) {
+            setShowRegistrationPrompt(true);
+          }
           return;
         }
         setQuestionIndex((prev) => prev + 1);
         setSelectedChoice(0);
       },
     });
-  }, [checkAnswer, questionIndex, game.questions.length, toast, endGame, currentQuestion]);
+  };
 
-  React.useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "1") setSelectedChoice(0);
-      else if (event.key === "2") setSelectedChoice(1);
-      else if (event.key === "3") setSelectedChoice(2);
-      else if (event.key === "4") setSelectedChoice(3);
-      else if (event.key === "Enter") handleNext();
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleNext]);
+  const handleStatisticsClick = () => {
+    if (isGuest) {
+      setShowRegistrationPrompt(true);
+    } else {
+      router.push(`/statistics/${game.id}`);
+    }
+  };
 
   if (hasEnded) {
+    const timeSpent = formatTimeDelta(
+      differenceInSeconds(endTime || now, game.timeStarted)
+    );
+
     return (
-      <div className="absolute flex flex-col items-center justify-center -translate-x-1/2 -translate-y-1/2 top-1/2 left-1/2">
-        <div className="px-4 py-2 mt-2 font-semibold text-white bg-green-500 rounded-md whitespace-nowrap">
-          Quiz Completed in{" "}
-          {formatTimeDelta(differenceInSeconds(now, game.timeStarted))}
-        </div>
-        <Link
-          href={`/statistics/${game.id}`}
-          className={cn("mt-4 bg-slate-800 text-white px-6 py-3 rounded-lg font-semibold hover:bg-slate-700 transition-all flex items-center")}
-        >
-          View Statistics
-          <BarChart className="w-4 h-4 ml-2" />
-        </Link>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] md:w-[60vw] max-w-2xl">
+        <Card className="p-8">
+          <CardHeader className="text-center space-y-2">
+            <CardTitle className="text-2xl">Quiz Completed!</CardTitle>
+            <CardDescription>
+              You completed the quiz in {timeSpent}
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="flex justify-center items-center gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-green-500">{correctAnswers}</p>
+                <p className="text-sm text-muted-foreground">Correct</p>
+              </div>
+              <Separator orientation="vertical" className="h-8" />
+              <div className="text-center">
+                <p className="text-2xl font-bold text-red-500">{wrongAnswers}</p>
+                <p className="text-sm text-muted-foreground">Wrong</p>
+              </div>
+            </div>
+
+            <Button 
+              onClick={handleStatisticsClick}
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              {isGuest ? "Register to View Statistics" : "View Detailed Statistics"}
+            </Button>
+
+            {isGuest && (
+              <p className="text-sm text-center text-muted-foreground">
+                Create an account to save your results and view detailed statistics
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <RegistrationPrompt
+          open={showRegistrationPrompt}
+          onClose={() => setShowRegistrationPrompt(false)}
+          gameId={game.id}
+          guestSessionId={game.guestSession?.id}
+        />
       </div>
     );
   }
@@ -151,67 +188,54 @@ const MCQ = ({ game }: Props) => {
   return (
     <div className="absolute -translate-x-1/2 -translate-y-1/2 md:w-[80vw] max-w-4xl w-[90vw] top-1/2 left-1/2">
       <div className="flex flex-col gap-4">
-        <div className="flex flex-row justify-between items-center">
-          <div className="flex flex-col gap-2">
-            <h3 className="text-2xl font-bold">{game.topic}</h3>
-            <div className="flex items-center text-muted-foreground">
-              <Timer className="w-4 h-4 mr-2" />
-              {formatTimeDelta(differenceInSeconds(now, game.timeStarted))}
-            </div>
+        <div className="flex flex-row justify-between">
+          <div className="flex flex-col">
+            <p className="text-slate-400">Topic</p>
+            <h1 className="text-2xl font-bold">{game.topic}</h1>
           </div>
           <MCQCounter
-            correct_answers={stats.correct_answers}
-            wrong_answers={stats.wrong_answers}
+            correct_answers={correctAnswers}
+            wrong_answers={wrongAnswers}
           />
         </div>
 
-        <Progress value={(questionIndex / game.questions.length) * 100} className="h-2" />
+        <Progress
+          value={(questionIndex / game.questions.length) * 100}
+          className="h-2"
+        />
 
-        <Card className="w-full mt-4">
+        <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-2xl font-bold">
+            <CardTitle className="flex items-center justify-between">
+              <span>
                 Question {questionIndex + 1} of {game.questions.length}
-              </CardTitle>
-              <div className="text-muted-foreground text-lg font-semibold">
-                {Math.round((questionIndex / game.questions.length) * 100)}% Complete
-              </div>
-            </div>
-            <CardDescription className="text-xl mt-4">
+              </span>
+              <span>{Math.round((questionIndex / game.questions.length) * 100)}% complete</span>
+            </CardTitle>
+            <CardDescription className="text-lg">
               {currentQuestion?.question}
             </CardDescription>
           </CardHeader>
-          <CardContent className="mt-4">
-            <div className="flex flex-col gap-4">
-              {options.map((option, index) => {
-                return (
-                  <Button
-                    key={`${currentQuestion.id}-${option}-${index}`}
-                    variant={selectedChoice === index ? "default" : "outline"}
-                    className={cn(
-                      "p-8 justify-start items-center text-lg hover:border-primary",
-                      selectedChoice === index && "border-2 border-primary bg-primary/10"
-                    )}
-                    onClick={() => setSelectedChoice(index)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="bg-primary/10 p-2 px-3 rounded-md font-semibold">
-                        {index + 1}
-                      </div>
-                      <div className="text-start">{option}</div>
-                    </div>
-                  </Button>
-                );
-              })}
-            </div>
+
+          <CardContent className="space-y-4">
+            {questionData.options.map((option, index) => (
+              <Button
+                key={index}
+                variant={selectedChoice === index ? "default" : "outline"}
+                className={cn("w-full py-8", selectedChoice === index && "border-2 border-primary")}
+                onClick={() => setSelectedChoice(index)}
+              >
+                {option}
+              </Button>
+            ))}
+
             <Button
-              className="w-full mt-6 text-lg p-6 bg-slate-800 hover:bg-slate-700 transition-all"
-              disabled={isChecking || options.length === 0}
+              className="w-full mt-4"
               onClick={handleNext}
+              disabled={isChecking}
             >
               {isChecking && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Next Question
-              <ChevronRight className="w-5 h-5 ml-2" />
             </Button>
           </CardContent>
         </Card>

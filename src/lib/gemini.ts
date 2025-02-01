@@ -18,14 +18,12 @@ export async function generate_quiz(
 
   const list_input: boolean = Array.isArray(user_prompt);
   const dynamic_elements: boolean = /<.*?>/.test(JSON.stringify(output_format));
-  const list_output: boolean = /\[.*?\]/.test(JSON.stringify(output_format));
+  const list_output: boolean = true; // Always expect array output
 
   let error_msg: string = "";
 
   for (let i = 0; i < num_tries; i++) {
-    let output_format_prompt: string = `\nYou are to output ${
-      list_output && "an array of objects in"
-    } the following in json format: ${JSON.stringify(
+    let output_format_prompt: string = `\nYou must output an array of objects in the following json format: ${JSON.stringify(
       output_format
     )}. \nDo not put quotation marks or escape character \\ in the output fields.`;
 
@@ -59,11 +57,8 @@ export async function generate_quiz(
       try {
         let output: any = JSON.parse(res);
 
-        if (list_input) {
-          if (!Array.isArray(output)) {
-            throw new Error("Output format not in an array of json");
-          }
-        } else {
+        // If output is not an array, wrap it in an array
+        if (!Array.isArray(output)) {
           output = [output];
         }
 
@@ -91,7 +86,7 @@ export async function generate_quiz(
           }
         }
 
-        return list_input ? output : output[0];
+        return output;
       } catch (e) {
         error_msg = `\n\nResult: ${res}\n\nError message: ${e}`;
         console.log("An exception occurred:", e);

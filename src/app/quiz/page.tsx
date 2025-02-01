@@ -12,15 +12,20 @@ export const metadata = {
 interface Props {
   searchParams: {
     topic?: string;
+    guest?: string;
   };
 }
 
 const Quiz = async ({ searchParams }: Props) => {
   const session = await getAuthSession();
-  if (!session?.user) {
+  const isGuest = searchParams.guest === 'true';
+  
+  // Only redirect if not a guest and not logged in
+  if (!session?.user && !isGuest) {
     redirect("/");
   }
-  return <QuizCreation topic={searchParams.topic ?? ""} />;
+
+  return <QuizCreation topic={searchParams.topic ?? ""} isGuest={isGuest} />;
 };
 
 export default Quiz;

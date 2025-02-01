@@ -9,98 +9,66 @@ import { z } from "zod";
 export async function POST(req: Request, res: Response) {
   try {
     const session = await getAuthSession();
-    if (!session?.user) {
+    const body = await req.json();
+    const { topic, type, amount, guestSessionId } = body;
+
+    // Validate input
+    const { topic: validatedTopic, type: validatedType, amount: validatedAmount } = 
+      quizCreationSchema.parse({ topic, type, amount });
+
+    // Generate questions
+    const questions = await generateQuestions(validatedTopic, validatedAmount, validatedType);
+    
+    if (!questions || questions.length === 0) {
       return NextResponse.json(
-        { error: "You must be logged in to create a game." },
-        {
-          status: 401,
-        }
+        { error: "Failed to generate questions" },
+        { status: 500 }
       );
     }
-    const body = await req.json();
-    const { topic, type, amount } = quizCreationSchema.parse(body);
 
-    // Generate questions directly using the service
-    const questions = await generateQuestions(topic, amount, type);
-
-    // If we got questions successfully, create the game and questions in a transaction
-    return await prisma.$transaction(async (tx) => {
-      const game = await tx.game.create({
-        data: {
-          gameType: type,
-          timeStarted: new Date(),
-          userId: session.user.id,
-          topic,
-        },
-      });
-
-      await tx.topic_count.upsert({
-        where: {
-          topic,
-        },
-        create: {
-          topic,
-          count: 1,
-        },
-        update: {
-          count: {
-            increment: 1,
-          },
-        },
-      });
-
-      if (type === "mcq") {
-        const manyData = (questions as MCQQuestion[]).map((question) => {
-          const options = [
-            question.option1,
-            question.option2,
-            question.option3,
-            question.answer,
-          ].sort(() => Math.random() - 0.5);
-          return {
-            question: question.question,
-            answer: question.answer,
-            options: JSON.stringify(options),
-            gameId: game.id,
-            questionType: type,
-          };
-        });
-
-        await tx.question.createMany({
-          data: manyData,
-        });
-      } else if (type === "open_ended") {
-        await tx.question.createMany({
-          data: (questions as OpenEndedQuestion[]).map((question) => {
+    // Create game with properly formatted options
+    const game = await prisma.game.create({
+      data: {
+        gameType: validatedType,
+        timeStarted: new Date(),
+        topic: validatedTopic,
+        ...(session?.user?.id ? { userId: session.user.id } : {}),
+        ...(guestSessionId ? { guestSessionId } : {}),
+        questions: {
+          create: questions.map((question) => {
+            if (validatedType === "mcq") {
+              const mcqQuestion = question as MCQQuestion;
+              return {
+                question: mcqQuestion.question,
+                answer: mcqQuestion.answer,
+                options: JSON.stringify({
+                  options: [mcqQuestion.option1, mcqQuestion.option2, mcqQuestion.option3, mcqQuestion.answer]
+                    .sort(() => Math.random() - 0.5),
+                  answer: mcqQuestion.answer
+                }),
+                questionType: validatedType,
+              };
+            }
             return {
               question: question.question,
               answer: question.answer,
-              gameId: game.id,
-              questionType: type,
+              questionType: validatedType,
             };
           }),
-        });
-      }
-
-      return NextResponse.json({ gameId: game.id }, { status: 200 });
+        },
+      },
+      include: {
+        questions: true,
+      },
     });
+
+    return NextResponse.json({ gameId: game.id });
   } catch (error) {
-    console.error("Error creating game:", error);
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: error.issues },
-        {
-          status: 400,
-        }
-      );
-    } else {
-      return NextResponse.json(
-        { error: "An unexpected error occurred while creating the game." },
-        {
-          status: 500,
-        }
-      );
-    }
+    console.error("Error in game creation:", error);
+    return NextResponse.json(
+      { error: "Something went wrong" },
+      { status: 500 }
+    );
   }
 }
 

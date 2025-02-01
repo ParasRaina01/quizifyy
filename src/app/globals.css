@@ -76,3 +76,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .bg-grid-white\/10 {
+    background-color: rgb(255 255 255 / 0.1);
+  }
+
+  .bg-grid-16 {
+    background-size: 16px 16px;
+    background-image: linear-gradient(to right, rgb(255 255 255 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  }
+}

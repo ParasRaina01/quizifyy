@@ -1,23 +1,41 @@
 "use client";
-import React from "react";
-import { Button } from "./ui/button";
+import React, { useState } from "react";
 import { signIn } from "next-auth/react";
-import { redirect } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import Image from "next/image";
 
+export default function SignInButton() {
+  const [isLoading, setIsLoading] = useState(false);
 
-type Props = { text: string };
+  const loginWithGoogle = async () => {
+    setIsLoading(true);
+    try {
+      await signIn("google");
+    } catch (error) {
+      console.error("Error signing in:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-const SignInButton = ({ text }: Props) => {
   return (
-    <Button
-      onClick={() => {
-        signIn("google").catch(console.error);
-        redirect("/dashboard");
-      }}
+    <button
+      onClick={loginWithGoogle}
+      disabled={isLoading}
+      className="w-full flex items-center justify-center gap-3 px-4 py-4 bg-white hover:bg-gray-50 text-gray-900 font-medium rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
     >
-      {text}
-    </Button>
+      {isLoading ? (
+        <Loader2 className="w-5 h-5 animate-spin" />
+      ) : (
+        <Image 
+          src="/google.svg" 
+          alt="Google" 
+          width={20} 
+          height={20}
+          className="flex-shrink-0" 
+        />
+      )}
+      Continue with Google
+    </button>
   );
-};
-
-export default SignInButton;
+}

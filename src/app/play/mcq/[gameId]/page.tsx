@@ -12,10 +12,8 @@ type Props = {
 
 const MCQPage = async ({ params: { gameId } }: Props) => {
   const session = await getAuthSession();
-  if (!session?.user) {
-    return redirect("/");
-  }
-
+  
+  // Find the game with full question details
   const game = await prisma.game.findUnique({
     where: {
       id: gameId,
@@ -26,14 +24,24 @@ const MCQPage = async ({ params: { gameId } }: Props) => {
           id: true,
           question: true,
           options: true,
+          answer: true,
+          questionType: true,
         },
       },
+      guestSession: true,
     },
   });
-  if (!game || game.gameType === "open_ended") {
-    return redirect("/quiz");
+
+  if (!game || game.gameType !== "mcq") {
+    return redirect("/");
   }
-  return <MCQ game={game} />;
+
+  // If game belongs to a user (not guest) and no session, redirect to home
+  if (game.userId && !session?.user) {
+    return redirect("/");
+  }
+
+  return <MCQ game={game} isGuest={!!game.guestSessionId} />;
 };
 
 export default MCQPage;

@@ -32,18 +32,24 @@ import LoadingQuestions from "../LoadingQuestions";
 
 type Props = {
   topic: string;
+  isGuest?: boolean;
 };
 
 type Input = z.infer<typeof quizCreationSchema>;
 
-const QuizCreation = ({ topic: topicParam }: Props) => {
+const QuizCreation = ({ topic, isGuest }: Props) => {
   const router = useRouter();
   const [showLoader, setShowLoader] = React.useState(false);
   const [finishedLoading, setFinishedLoading] = React.useState(false);
   const { toast } = useToast();
   const { mutate: getQuestions, isLoading } = useMutation({
-    mutationFn: async ({ amount, topic, type }: Input) => {
-      const response = await axios.post("/api/game", { amount, topic, type });
+    mutationFn: async (input: Input) => {
+      const guestSessionId = isGuest ? localStorage.getItem('guestSessionId') : null;
+      const payload = {
+        ...input,
+        guestSessionId
+      };
+      const response = await axios.post('/api/game', payload);
       return response.data;
     },
   });
@@ -51,36 +57,26 @@ const QuizCreation = ({ topic: topicParam }: Props) => {
   const form = useForm<Input>({
     resolver: zodResolver(quizCreationSchema),
     defaultValues: {
-      topic: topicParam,
+      topic: topic,
       type: "mcq",
-      amount: 3,
+      amount: 5,
     },
   });
 
   const onSubmit = async (data: Input) => {
     setShowLoader(true);
     getQuestions(data, {
+      onSuccess: ({ gameId }) => {
+        setFinishedLoading(true);
+        router.push(`/play/${data.type}/${gameId}`);
+      },
       onError: (error) => {
         setShowLoader(false);
-        if (error instanceof AxiosError) {
-          if (error.response?.status === 500) {
-            toast({
-              title: "Error",
-              description: "Something went wrong. Please try again later.",
-              variant: "destructive",
-            });
-          }
-        }
-      },
-      onSuccess: ({ gameId }: { gameId: string }) => {
-        setFinishedLoading(true);
-        setTimeout(() => {
-          if (form.getValues("type") === "mcq") {
-            router.push(`/play/mcq/${gameId}`);
-          } else if (form.getValues("type") === "open_ended") {
-            router.push(`/play/open-ended/${gameId}`);
-          }
-        }, 2000);
+        toast({
+          title: 'Error',
+          description: 'Something went wrong, please try again later',
+          variant: 'destructive',
+        });
       },
     });
   };
