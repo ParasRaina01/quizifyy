@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { Brain, Lightbulb, Timer, Trophy } from "lucide-react";
 
 export default async function Home() {
+  const currentYear = new Date().getFullYear();
   const session = await getServerSession();
   if (session?.user) {
     redirect("/dashboard");
@@ -99,7 +100,8 @@ export default async function Home() {
 
       {/* Footer */}
       <footer className="w-full py-6 text-center text-sm text-muted-foreground">
-        <p>© 2024 Quizify. All rights reserved.</p>
+        <p>© {currentYear} Quizify. All rights reserved.</p>
+        <p>Created by Ashwani Paras</p>
       </footer>
     </main>
   );
